@@ -1,6 +1,7 @@
 // @refresh reload
 
 import * as Sentry from "@sentry/solid"
+import { Router } from "@solidjs/router"
 import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface } from "@/app"
 import { type Platform, PlatformProvider } from "@/context/platform"
@@ -99,11 +100,25 @@ if (!(root instanceof HTMLElement) && import.meta.env.DEV) {
   throw new Error(getRootNotFoundError())
 }
 
+// URL prefix the app is hosted under behind a reverse proxy. Read from the
+// <base href> injected by the server (driven by --base-path / OPENCODE_BASE_PATH).
+// Returns "" (root) when absent. Used for the API server URL and the router base.
+const getBasePath = () => {
+  if (typeof document === "undefined") return ""
+  const el = document.querySelector("base")
+  if (!el?.getAttribute("href")) return ""
+  try {
+    return new URL(el.href).pathname.replace(/\/+$/, "")
+  } catch {
+    return ""
+  }
+}
+
 const getCurrentUrl = () => {
   if (location.hostname.includes("opencode.ai")) return "http://localhost:4096"
   if (import.meta.env.DEV)
     return `http://${import.meta.env.VITE_OPENCODE_SERVER_HOST ?? "localhost"}:${import.meta.env.VITE_OPENCODE_SERVER_PORT ?? "4096"}`
-  return location.origin
+  return location.origin + getBasePath()
 }
 
 const getDefaultUrl = () => {
@@ -172,6 +187,7 @@ if (root instanceof HTMLElement) {
             defaultServer={ServerConnection.Key.make(getDefaultUrl())}
             canonicalLocalServer={ServerConnection.key(server)}
             servers={[server]}
+            router={(p) => <Router base={getBasePath()} {...p} />}
             disableHealthCheck
           />
         </AppBaseProviders>

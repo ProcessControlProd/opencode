@@ -20,6 +20,11 @@ const sentry =
     : false
 
 export default defineConfig({
+  // Relative asset base so the app can be hosted under any URL prefix behind a
+  // reverse proxy. The server injects a <base href> (driven by --base-path /
+  // OPENCODE_BASE_PATH) so relative assets resolve correctly at the root or
+  // under a subpath, including deep client-routed paths.
+  base: "./",
   plugins: [desktopPlugin, sentry] as any,
   server: {
     host: "0.0.0.0",
