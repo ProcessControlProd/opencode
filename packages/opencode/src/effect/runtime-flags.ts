@@ -18,6 +18,10 @@ export class Service extends ConfigService.Service<Service>()("@opencode/Runtime
   pure: bool("OPENCODE_PURE"),
   disableDefaultPlugins: bool("OPENCODE_DISABLE_DEFAULT_PLUGINS"),
   disableEmbeddedWebUi: bool("OPENCODE_DISABLE_EMBEDDED_WEB_UI"),
+  // URL prefix the web UI is hosted under behind a reverse proxy (e.g.
+  // "/apps/opencode"). Empty = root. The server injects a matching <base href>
+  // so the relatively-built UI resolves assets/API/router under the subpath.
+  basePath: Config.string("OPENCODE_BASE_PATH").pipe(Config.withDefault("")),
   disableExternalSkills: bool("OPENCODE_DISABLE_EXTERNAL_SKILLS"),
   disableLspDownload: bool("OPENCODE_DISABLE_LSP_DOWNLOAD"),
   disableClaudeCodePrompt: Config.all({
