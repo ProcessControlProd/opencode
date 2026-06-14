@@ -1,0 +1,75 @@
+name: build-fork
+
+# Build the opencode binary (with the reverse-proxy base-path patch) and publish
+# it as a GitHub Release on THIS fork. Uses only the built-in GITHUB_TOKEN — no
+# upstream secrets (npm / Azure / Apple signing) needed. Produces the Linux
+# x64 + arm64 binaries used by the OEM odoo image (replacing `opencode.ai/install`).
+#
+# Run it from the Actions tab ("build-fork" -> Run workflow). Requires Actions to
+# be enabled on the fork (Settings -> Actions -> Allow all actions).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch/ref to build"
+        default: feat/reverse-proxy-base-path
+      tag:
+        description: "Release tag to publish the binaries under"
+        default: fork-latest
+      version:
+        description: "Version stamp baked into the binary"
+        default: 0.0.0-fork
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # GitHub-hosted Linux runner. build.ts cross-compiles every target from a
+    # single host, so this produces BOTH linux-x64 and linux-arm64 (bun
+    # cross-compile + per-arch native deps) — the runner's own arch is irrelevant.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (${{ inputs.ref }})
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Install dependencies
+        run: bun install
+
+      # build.ts cross-compiles every target on this single Linux runner, builds
+      # packages/app (vite base "./") and embeds it as opencode-web-ui.gen.ts.
+      # A smoke test (`opencode --version`) runs for the native linux-x64 binary.
+      - name: Build binaries
+        run: bun ./packages/opencode/script/build.ts
+        env:
+          OPENCODE_VERSION: ${{ inputs.version }}
+
+      - name: Stage linux binaries
+        run: |
+          mkdir -p out
+          for d in packages/opencode/dist/opencode-linux-*; do
+            [ -f "$d/bin/opencode" ] || continue
+            cp "$d/bin/opencode" "out/$(basename "$d")"
+          done
+          echo "=== staged binaries ==="
+          ls -la out
+
+      - name: Publish to fork release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG='${{ inputs.tag }}'
+          # Recreate the rolling release so the tag always points at the latest build.
+          gh release delete "$TAG" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+          gh release create "$TAG" out/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "${{ inputs.ref }}" \
+            --title "opencode fork ($TAG)" \
+            --notes "opencode binary with reverse-proxy base-path support (--base-path / OPENCODE_BASE_PATH). Linux x64 + arm64. Built from ${{ inputs.ref }}."
