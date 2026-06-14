@@ -41,13 +41,28 @@ export function createSdkForServer({
   })
 }
 
+// The vendored client joins with new URL("/api/...", baseUrl), which drops a base
+// path: behind a reverse proxy under a subpath every call would go to the domain
+// root. Put the prefix back on anything that lost it. No-op at the root.
+export function basePathFetch(baseUrl: string, fetch?: typeof globalThis.fetch): typeof globalThis.fetch | undefined {
+  const base = new URL(baseUrl).pathname.replace(/\/+$/, "")
+  if (!base) return fetch
+  const next = fetch ?? globalThis.fetch
+  return ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : input)
+    if (url.pathname === base || url.pathname.startsWith(base + "/")) return next(input, init)
+    url.pathname = base + url.pathname
+    return next(input instanceof Request ? new Request(url, input) : url, init)
+  }) as typeof globalThis.fetch
+}
+
 export function createApiForServer(input: {
   server: ServerConnection.HttpBase
   fetch?: typeof globalThis.fetch
 }): OpenCodeClient {
   return OpenCode.make({
     baseUrl: input.server.url,
-    fetch: input.fetch,
+    fetch: basePathFetch(input.server.url, input.fetch),
     headers: input.server.password
       ? {
           Authorization: `Basic ${authTokenFromCredentials({

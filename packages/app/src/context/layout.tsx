@@ -1,3 +1,4 @@
+import { getProjectRoots, stripBasePath } from "@/utils/base-path"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { batch, createEffect, createMemo, onCleanup, onMount, type Accessor } from "solid-js"
 import { useLocation } from "@solidjs/router"
@@ -167,7 +168,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const platform = usePlatform()
     const location = useLocation()
     const route = createMemo(() => {
-      const value = currentRoute(location.pathname, location.search)
+      const value = currentRoute(stripBasePath(location.pathname), location.search)
       if (value.type === "home") return value
       if (value.server) return value
       if (value.type === "draft") {
@@ -512,6 +513,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         }
       })
     })
+
+    // The directories the server allows (OPENCODE_PROJECT_ROOTS) always stay in the list,
+    // so a browser that never opened them lands on a home that already shows them.
+    const allowedRoots = getProjectRoots()
+    if (allowedRoots.length > 0) {
+      createEffect(() => {
+        const projects = server.projects.list()
+        for (const root of allowedRoots) {
+          if (!projects.some((project) => project.worktree === root)) server.projects.open(root)
+        }
+      })
+    }
 
     const enriched = createMemo(() => server.projects.list().map(enrich))
     const list = createMemo(() => {

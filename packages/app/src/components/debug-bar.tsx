@@ -1,3 +1,4 @@
+import { stripBasePath } from "@/utils/base-path"
 import { useIsRouting, useLocation } from "@solidjs/router"
 import { batch, createEffect, onCleanup, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -222,7 +223,7 @@ export function DebugBar(props: { inline?: boolean } = {}) {
 
   createEffect(() => {
     const busy = routing()
-    const next = `${location.pathname}${location.search}`
+    const next = `${stripBasePath(location.pathname)}${location.search}`
 
     if (!init) {
       init = true

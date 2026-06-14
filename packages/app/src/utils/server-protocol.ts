@@ -11,7 +11,8 @@ function headers(server: ServerConnection.HttpBase) {
 }
 
 async function probe(server: ServerConnection.HttpBase, fetch: typeof globalThis.fetch, path: string) {
-  const response = await fetch(new URL(path, server.url), {
+  // Concatenate so a server hosted under a base path keeps it (new URL("/x", base) drops it).
+  const response = await fetch(new URL(server.url.replace(/\/+$/, "") + path), {
     headers: headers(server),
     signal: AbortSignal.timeout(5_000),
   })

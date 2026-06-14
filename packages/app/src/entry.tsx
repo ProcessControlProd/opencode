@@ -1,6 +1,7 @@
 // @refresh reload
 
 import * as Sentry from "@sentry/solid"
+import { Router } from "@solidjs/router"
 import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface } from "@/app"
 import { loadInitialLocale } from "@/context/language"
@@ -9,6 +10,7 @@ import { createBrowserDraftStore } from "@/utils/draft-store"
 import { dict as en } from "@/i18n/en"
 import { dict as zh } from "@/i18n/zh"
 import { authFromToken } from "@/utils/server"
+import { getBasePath } from "@/utils/base-path"
 import pkg from "../package.json"
 import { ServerConnection } from "./context/server"
 
@@ -96,11 +98,44 @@ if (!(root instanceof HTMLElement) && import.meta.env.DEV) {
   throw new Error(getRootNotFoundError())
 }
 
+
+// Reverse-proxy base-path link compatibility. A few raw anchors in the app use
+// absolute hrefs (e.g. <a href="/">) that bypass the router base and would escape
+// the subpath behind a reverse proxy. In the capture phase (before the router's
+// click handler), rewrite same-origin absolute hrefs that aren't already under
+// the base so navigation stays under OPENCODE_BASE_PATH. No-op at root and for
+// hrefs already under the base, so router <A> links are left untouched.
+const installBasePathLinkFix = () => {
+  const base = getBasePath()
+  if (!base || typeof document === "undefined") return
+  document.addEventListener(
+    "click",
+    (event) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      )
+        return
+      const target = event.target as Element | null
+      const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null
+      if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) return
+      const href = anchor.getAttribute("href")
+      if (!href || !href.startsWith("/") || href === base || href.startsWith(base + "/")) return
+      anchor.setAttribute("href", base + href)
+    },
+    true,
+  )
+}
+
 const getCurrentUrl = () => {
   if (location.hostname.includes("opencode.ai")) return "http://localhost:4096"
   if (import.meta.env.DEV)
     return `http://${import.meta.env.VITE_OPENCODE_SERVER_HOST ?? "localhost"}:${import.meta.env.VITE_OPENCODE_SERVER_PORT ?? "4096"}`
-  return location.origin
+  return location.origin + getBasePath()
 }
 
 const getDefaultUrl = () => {
@@ -153,6 +188,7 @@ if (root instanceof HTMLElement) {
   void loadInitialLocale().then((locale) => {
     const auth = authFromToken(new URLSearchParams(location.search).get("auth_token"))
     clearAuthToken()
+    installBasePathLinkFix()
     const server: ServerConnection.Http = {
       type: "http",
       authToken: !!auth,
@@ -169,6 +205,7 @@ if (root instanceof HTMLElement) {
               defaultServer={ServerConnection.Key.make(getDefaultUrl())}
               canonicalLocalServer={ServerConnection.key(server)}
               servers={[server]}
+              router={(p) => <Router base={getBasePath()} {...p} />}
               disableHealthCheck
             />
           </AppBaseProviders>

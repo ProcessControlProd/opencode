@@ -97,6 +97,10 @@ const SessionRoute = () => {
     if (!settings.general.newLayoutDesigns()) return
     if (params.id || search.draftId) return
     if (!tabs.ready() || !sdk().directory) return
+    // Entering by URL (a link from outside, e.g. an embedding panel) must leave the
+    // directory as an open project, like picking it does; otherwise the draft's project
+    // selector finds nothing and shows "new project".
+    server.projects.open(sdk().directory)
     tabs.newDraft({ server: server.key, directory: sdk().directory }, search.prompt)
   })
 

@@ -1,3 +1,4 @@
+import { stripBasePath } from "@/utils/base-path"
 import {
   createEffect,
   createMemo,
@@ -97,13 +98,13 @@ export function Titlebar(props: { update?: TitlebarUpdate; debugTools?: { visibl
     action: undefined as "back" | "forward" | undefined,
   })
 
-  const path = () => `${location.pathname}${location.search}${location.hash}`
+  const path = () => `${stripBasePath(location.pathname)}${location.search}${location.hash}`
   const creating = createMemo(() => {
     const route = layout.route()
     if (route.type === "draft" || route.type === "dir-new-sesssion") return true
     if (!params.dir) return false
     if (params.id) return false
-    const parts = location.pathname.replace(/\/+$/, "").split("/")
+    const parts = stripBasePath(location.pathname).replace(/\/+$/, "").split("/")
     return parts.at(-1) === "session"
   })
 
