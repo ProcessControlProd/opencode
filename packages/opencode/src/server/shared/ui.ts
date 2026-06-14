@@ -52,11 +52,29 @@ function notFound() {
   return HttpServerResponse.jsonUnsafe({ error: "Not Found" }, { status: 404 })
 }
 
-function embeddedUIResponse(file: string, body: Uint8Array) {
+// Normalize a base path to "/prefix/" (or "/" for root).
+export function normalizeBasePath(basePath: string) {
+  const trimmed = (basePath ?? "").trim().replace(/^\/+|\/+$/g, "")
+  return trimmed ? `/${trimmed}/` : "/"
+}
+
+// Inject a <base href> into the document <head> so a relatively-built UI
+// (vite base "./") resolves its assets under any reverse-proxy subpath,
+// including deep client-routed paths. A plain <base> tag (not a script) keeps
+// the CSP script-src hash intact. No-op if the document already has a <base>.
+export function injectBaseHref(html: string, basePath: string) {
+  if (/<base\s/i.test(html)) return html
+  const href = normalizeBasePath(basePath)
+  return html.replace(/<head(\s[^>]*)?>/i, (match) => `${match}<base href="${href}">`)
+}
+
+function embeddedUIResponse(file: string, body: Uint8Array, basePath = "") {
   const mime = FSUtil.mimeType(file)
   const headers = new Headers({ "content-type": mime })
   if (mime.startsWith("text/html")) {
-    headers.set("content-security-policy", cspForHtml(new TextDecoder().decode(body)))
+    const html = injectBaseHref(new TextDecoder().decode(body), basePath)
+    headers.set("content-security-policy", cspForHtml(html))
+    return HttpServerResponse.raw(new TextEncoder().encode(html), { headers })
   }
   return HttpServerResponse.raw(body, { headers })
 }
@@ -65,25 +83,26 @@ export function serveEmbeddedUIEffect(
   requestPath: string,
   fs: FSUtil.Interface,
   embeddedWebUI: Record<string, string>,
+  basePath = "",
 ) {
   const file = embeddedWebUI[requestPath.replace(/^\//, "")] ?? embeddedWebUI["index.html"] ?? null
   if (!file) return Effect.succeed(notFound())
 
   return fs.readFile(file).pipe(
-    Effect.map((body) => embeddedUIResponse(file, body)),
+    Effect.map((body) => embeddedUIResponse(file, body, basePath)),
     Effect.catchReason("PlatformError", "NotFound", () => Effect.succeed(notFound())),
   )
 }
 
 export function serveUIEffect(
   request: HttpServerRequest.HttpServerRequest,
-  services: { fs: FSUtil.Interface; client: HttpClient.HttpClient; disableEmbeddedWebUi: boolean },
+  services: { fs: FSUtil.Interface; client: HttpClient.HttpClient; disableEmbeddedWebUi: boolean; basePath?: string },
 ) {
   return Effect.gen(function* () {
     const embeddedWebUI = yield* Effect.promise(() => embeddedUI(services.disableEmbeddedWebUi))
     const path = new URL(request.url, "http://localhost").pathname
 
-    if (embeddedWebUI) return yield* serveEmbeddedUIEffect(path, services.fs, embeddedWebUI)
+    if (embeddedWebUI) return yield* serveEmbeddedUIEffect(path, services.fs, embeddedWebUI, services.basePath)
 
     const response = yield* services.client.execute(
       HttpClientRequest.make(request.method)(upstreamURL(path), {
@@ -94,7 +113,8 @@ export function serveUIEffect(
     const headers = proxyResponseHeaders(response.headers)
 
     if (response.headers["content-type"]?.includes("text/html")) {
-      const body = yield* response.text
+      const text = yield* response.text
+      const body = injectBaseHref(text, services.basePath ?? "")
       headers.set("Content-Security-Policy", cspForHtml(body))
       return HttpServerResponse.text(body, { status: response.status, headers })
     }

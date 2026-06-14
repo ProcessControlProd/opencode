@@ -30,6 +30,11 @@ const options = {
     describe: "additional domains to allow for CORS",
     default: [] as string[],
   },
+  "base-path": {
+    type: "string" as const,
+    describe: "URL prefix to host the web UI under behind a reverse proxy (e.g. /apps/opencode)",
+    default: "",
+  },
 }
 
 export type NetworkOptions = InferredOptionTypes<typeof options>
@@ -60,5 +65,11 @@ export function resolveNetworkOptionsNoConfig(args: NetworkOptions, config?: Con
   const argsCors = Array.isArray(args.cors) ? args.cors : args.cors ? [args.cors] : []
   const cors = [...configCors, ...argsCors]
 
-  return { hostname, port, mdns, mdnsDomain, cors }
+  // Surface --base-path as OPENCODE_BASE_PATH so the RuntimeFlags config layer
+  // (built when the server starts) picks it up; the UI server then injects a
+  // matching <base href>. Empty default = root (no-op).
+  const basePath = args["base-path"] ?? ""
+  if (basePath) process.env.OPENCODE_BASE_PATH = basePath
+
+  return { hostname, port, mdns, mdnsDomain, cors, basePath }
 }
