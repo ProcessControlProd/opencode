@@ -18,8 +18,8 @@ on:
         description: "Release tag to publish the binaries under"
         default: fork-latest
       version:
-        description: "Version stamp baked into the binary"
-        default: 0.0.0-fork
+        description: "Version stamp (auto = read packages/opencode/package.json)"
+        default: auto
 
 permissions:
   contents: write
@@ -43,13 +43,28 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # Resolve the version stamp. "auto" reads the branch's declared version
+      # (packages/opencode/package.json) so the binary reports the real opencode
+      # version (e.g. 1.17.6) instead of a 0.0.0-* placeholder.
+      - name: Resolve version
+        run: |
+          VERSION='${{ inputs.version }}'
+          if [ "$VERSION" = "auto" ]; then
+            VERSION=$(jq -r .version packages/opencode/package.json)
+          fi
+          echo "Resolved OPENCODE_VERSION=$VERSION"
+          echo "OPENCODE_VERSION=$VERSION" >> "$GITHUB_ENV"
+
       # build.ts cross-compiles every target on this single Linux runner, builds
       # packages/app (vite base "./") and embeds it as opencode-web-ui.gen.ts.
+      # OPENCODE_CHANNEL=prod => no "DEV" badge + classic layout default
+      # (newLayoutDesignsDefault is `channel !== "prod"`), matching the desktop app.
       # A smoke test (`opencode --version`) runs for the native linux-x64 binary.
       - name: Build binaries
         run: bun ./packages/opencode/script/build.ts
         env:
-          OPENCODE_VERSION: ${{ inputs.version }}
+          OPENCODE_VERSION: ${{ env.OPENCODE_VERSION }}
+          OPENCODE_CHANNEL: prod
 
       - name: Stage linux binaries
         run: |
