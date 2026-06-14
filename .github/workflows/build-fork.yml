@@ -12,8 +12,8 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Branch/ref to build"
-        default: feat/reverse-proxy-base-path
+        description: "Branch/ref to build (production-based feature branch)"
+        default: feat/reverse-proxy-base-path-prod
       tag:
         description: "Release tag to publish the binaries under"
         default: fork-latest
