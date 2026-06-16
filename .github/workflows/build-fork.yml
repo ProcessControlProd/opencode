@@ -15,8 +15,8 @@ on:
         description: "Branch/ref to build (production-based feature branch)"
         default: feat/reverse-proxy-base-path-prod
       tag:
-        description: "Release tag to publish the binaries under"
-        default: fork-latest
+        description: "Release tag (auto = v<version> from package.json)"
+        default: auto
       version:
         description: "Version stamp (auto = read packages/opencode/package.json)"
         default: auto
@@ -81,10 +81,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG='${{ inputs.tag }}'
-          # Recreate the rolling release so the tag always points at the latest build.
+          # "auto" => tag the release with the opencode version (e.g. v1.17.7).
+          if [ "$TAG" = "auto" ]; then
+            TAG="v$OPENCODE_VERSION"
+          fi
+          echo "Publishing release tag: $TAG"
+          # Recreate the release so re-running the build for a version republishes
+          # fresh binaries under the same version tag. --latest keeps a stable
+          # /releases/latest/download/ URL for consumers (the OEM odoo image).
           gh release delete "$TAG" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
           gh release create "$TAG" out/* \
             --repo "$GITHUB_REPOSITORY" \
             --target "${{ inputs.ref }}" \
-            --title "opencode fork ($TAG)" \
+            --latest \
+            --title "opencode $TAG" \
             --notes "opencode binary with reverse-proxy base-path support (--base-path / OPENCODE_BASE_PATH). Linux x64 + arm64. Built from ${{ inputs.ref }}."
